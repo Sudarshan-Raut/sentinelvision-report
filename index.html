@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SentinelVision — Technical Report</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+--bg:#f3f6f8;--fg:#0f2130;--mut:#57697b;--card:#fff;--bd:#d8e1e8;--acc:#0b7a75;--acc2:#28406b;--ok:#16824a;--bad:#c93b3b;--cloud:#3453c9;--mask:#16202b;--warn:#a86a00}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#081019;--fg:#e7eef5;--mut:#8ea2b4;--card:#101f2b;--bd:#213648;--acc:#3fd0c7;--acc2:#7f9bff;--ok:#4fd28a;--bad:#ff8a8a;--cloud:#8aa2ff;--mask:#000;--warn:#f0b34a}}
+:root[data-theme="dark"]{--bg:#081019;--fg:#e7eef5;--mut:#8ea2b4;--card:#101f2b;--bd:#213648;--acc:#3fd0c7;--acc2:#7f9bff;--ok:#4fd28a;--bad:#ff8a8a;--cloud:#8aa2ff;--mask:#000;--warn:#f0b34a}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.55 "Segoe UI",system-ui,-apple-system,Roboto,sans-serif}
+main{max-width:960px;margin:0 auto;padding:22px 16px 56px}
+h1{font:800 clamp(26px,6vw,40px)/1.15 Georgia,"Times New Roman",serif;margin:6px 0 4px}
+h2{font:700 21px/1.3 Georgia,serif;margin:38px 0 4px;padding-top:6px;border-top:1px solid var(--bd)}
+h2:first-of-type{border-top:0;padding-top:0}
+p{margin:6px 0}.mut{color:var(--mut);font-size:14px}
+.badge{display:inline-block;font-size:12px;padding:3px 10px;border-radius:99px;background:var(--acc);color:#fff;font-weight:700;letter-spacing:.02em}
+.note{border-left:4px solid var(--warn);background:var(--card);padding:10px 12px;border-radius:6px;font-size:13.5px;margin:12px 0}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-top:10px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:14px}
+svg{width:100%;height:auto;display:block}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--bd);vertical-align:top}
+.tbl{overflow-x:auto;background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:4px 10px;margin-top:8px}
+pre{background:var(--mask);color:#d6f5e3;padding:10px;border-radius:8px;font-size:12.5px;overflow-x:auto;margin:8px 0}
+.pipe{display:grid;gap:8px}
+.stage{display:flex;gap:10px;align-items:flex-start;background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:10px 12px}
+.stage b.n{min-width:26px;height:26px;border-radius:50%;background:var(--acc);color:#fff;display:grid;place-items:center;font-size:12.5px;flex:none}
+.stage .t{font-weight:700}
+.bars{display:flex;align-items:flex-end;gap:10px;height:130px;margin-top:12px}
+.bar{flex:1;background:linear-gradient(180deg,var(--acc),var(--acc2));border-radius:6px 6px 0 0;position:relative;display:flex;align-items:flex-start;justify-content:center}
+.bar span{position:absolute;top:-20px;font-size:12px;color:var(--mut)}
+.bar em{position:absolute;bottom:-20px;font-size:11px;color:var(--mut);font-style:normal;white-space:nowrap}
+.tag{font-size:11.5px;padding:2px 8px;border-radius:99px;border:1px solid var(--bd);color:var(--mut)}
+.wall{margin:8px 0;padding:8px;text-align:center;font-weight:700;color:var(--bad);border:2px dashed var(--bad);border-radius:8px;font-size:13.5px}
+.eq{font-family:Georgia,serif;font-style:italic;background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:8px 12px;margin:4px 0;font-size:14px}
+</style></head><body><main>
+
+<span class="badge">TARGET ARCHITECTURE</span>
+<p class="mut">Smart India Hackathon 2026 · PS 26171 · ISRO, Department of Space · Team NerdyEnough</p>
+<h1>SentinelVision — Technical Report</h1>
+<p>The full system as designed: a privacy-first browser agent that perceives the screen locally, sanitizes sensitive content before any network call, and lets a cloud model reason only over the safe view.</p>
+<div class="note"><b>Scope note:</b> this document describes the complete target architecture. Each component is marked <span class="tag">live</span> (running today) or <span class="tag">planned</span> (designed, not yet implemented).</div>
+
+<h2>1. End-to-end architecture</h2>
+<p class="mut">Three trust zones. Nothing crosses the middle boundary except the sanitized image.</p>
+<svg viewBox="0 0 900 430" font-family="Segoe UI,system-ui,sans-serif">
+<rect x="10" y="10" width="280" height="410" rx="10" fill="none" stroke="var(--ok)" stroke-width="2"/>
+<text x="150" y="34" text-anchor="middle" font-weight="700" fill="var(--ok)" font-size="14">USER DEVICE</text>
+<rect x="310" y="10" width="280" height="410" rx="10" fill="none" stroke="var(--bad)" stroke-width="2" stroke-dasharray="6 4"/>
+<text x="450" y="34" text-anchor="middle" font-weight="700" fill="var(--bad)" font-size="14">PRIVACY GATE</text>
+<rect x="610" y="10" width="280" height="410" rx="10" fill="none" stroke="var(--cloud)" stroke-width="2"/>
+<text x="750" y="34" text-anchor="middle" font-weight="700" fill="var(--cloud)" font-size="14">CLOUD</text>
+
+<g font-size="12" fill="var(--fg)">
+<rect x="30" y="55" width="240" height="40" rx="6" fill="var(--card)" stroke="var(--bd)"/><text x="150" y="79" text-anchor="middle">Screen capture (visible tab)</text>
+<rect x="30" y="110" width="240" height="40" rx="6" fill="var(--card)" stroke="var(--bd)"/><text x="150" y="134" text-anchor="middle">UI element detector</text>
+<rect x="30" y="165" width="240" height="40" rx="6" fill="var(--card)" stroke="var(--bd)"/><text x="150" y="189" text-anchor="middle">Face detector</text>
+<rect x="30" y="220" width="240" height="40" rx="6" fill="var(--card)" stroke="var(--bd)"/><text x="150" y="244" text-anchor="middle">Text detector / OCR</text>
+<rect x="30" y="275" width="240" height="40" rx="6" fill="var(--card)" stroke="var(--bd)"/><text x="150" y="299" text-anchor="middle">PII pattern classifier</text>
+<rect x="30" y="330" width="240" height="40" rx="6" fill="var(--acc)" stroke="var(--acc)"/><text x="150" y="354" text-anchor="middle" fill="#fff" font-weight="700">Redaction engine</text>
+<text x="150" y="392" text-anchor="middle" font-size="10.5" fill="var(--mut)">ONNX Runtime Web · WebGPU / WASM</text>
+</g>
+
+<g font-size="12" fill="var(--fg)">
+<rect x="330" y="120" width="240" height="46" rx="6" fill="var(--card)" stroke="var(--bad)"/><text x="450" y="140" text-anchor="middle" font-weight="700">Privacy validation gate</text><text x="450" y="156" text-anchor="middle" font-size="10.5" fill="var(--mut)">boxes covered? raw ref present?</text>
+<rect x="330" y="185" width="240" height="60" rx="6" fill="var(--card)" stroke="var(--bad)"/><text x="450" y="205" text-anchor="middle" font-weight="700">Fail-closed check</text><text x="450" y="222" text-anchor="middle" font-size="10.5" fill="var(--mut)">any failure → block transmission</text><text x="450" y="236" text-anchor="middle" font-size="10.5" fill="var(--mut)">low confidence → expand mask</text>
+<rect x="330" y="270" width="240" height="70" rx="6" fill="var(--card)" stroke="var(--bd)"/><text x="450" y="290" text-anchor="middle" font-weight="700">On-device audit log</text><text x="450" y="307" text-anchor="middle" font-size="10.5" fill="var(--mut)">type, confidence, redaction mode</text><text x="450" y="321" text-anchor="middle" font-size="10.5" fill="var(--mut)">metadata only — no raw PII</text>
+</g>
+
+<g font-size="12" fill="var(--fg)">
+<rect x="630" y="80" width="240" height="46" rx="6" fill="var(--card)" stroke="var(--cloud)"/><text x="750" y="100" text-anchor="middle" font-weight="700">Open-weight VLM</text><text x="750" y="116" text-anchor="middle" font-size="10.5" fill="var(--mut)">sanitized image only</text>
+<rect x="630" y="145" width="240" height="46" rx="6" fill="var(--card)" stroke="var(--cloud)"/><text x="750" y="165" text-anchor="middle" font-weight="700">Strict JSON action</text><text x="750" y="181" text-anchor="middle" font-size="10.5" fill="var(--mut)">click · scroll · focus · highlight</text>
+<rect x="630" y="210" width="240" height="46" rx="6" fill="var(--card)" stroke="var(--bd)"/><text x="750" y="230" text-anchor="middle" font-weight="700">Local action validator</text><text x="750" y="246" text-anchor="middle" font-size="10.5" fill="var(--mut)">allowlist + viewport check</text>
+<rect x="630" y="275" width="240" height="46" rx="6" fill="var(--card)" stroke="var(--ok)"/><text x="750" y="295" text-anchor="middle" font-weight="700" fill="var(--ok)">Safe execution</text><text x="750" y="311" text-anchor="middle" font-size="10.5" fill="var(--mut)">high-impact → user confirms</text>
+</g>
+
+<path d="M270 175 H330" stroke="var(--fg)" stroke-width="1.5" marker-end="url(#a)" fill="none"/>
+<path d="M570 143 H610" stroke="var(--fg)" stroke-width="1.5" marker-end="url(#a)" fill="none"/>
+<path d="M750 191 V210" stroke="var(--fg)" stroke-width="1.5" marker-end="url(#a)" fill="none"/>
+<path d="M630 233 H570" stroke="var(--fg)" stroke-width="1.5" marker-end="url(#a)" fill="none"/>
+<path d="M330 295 H280" stroke="var(--fg)" stroke-width="1" stroke-dasharray="3 2" fill="none"/>
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--fg)"/></marker></defs>
+<text x="450" y="414" text-anchor="middle" font-size="11" fill="var(--bad)" font-weight="700">Raw pixels and raw OCR text never cross this line →</text>
+</svg>
+<p class="mut">Capture through redaction: <span class="tag">live</span> (regex/heuristic detectors). Trained face/OCR models and the cloud round trip: <span class="tag">planned</span>.</p>
+
+<h2>2. Request lifecycle, step by step</h2>
+<div class="pipe">
+<div class="stage"><b class="n">1</b><div><span class="t">User starts SentinelVision</span><div class="mut">One click, on the active tab only (activeTab permission)</div></div></div>
+<div class="stage"><b class="n">2</b><div><span class="t">Visible tab captured locally</span><div class="mut">Raw buffer held only in temporary memory, never written to disk</div></div></div>
+<div class="stage"><b class="n">3</b><div><span class="t">Local detection runs</span><div class="mut">UI elements, faces, text regions, and PII patterns identified with confidence scores</div></div></div>
+<div class="stage"><b class="n">4</b><div><span class="t">Privacy policy applies redaction</span><div class="mut">High confidence → placeholder; low confidence → expanded mask; failure → block</div></div></div>
+<div class="stage"><b class="n">5</b><div><span class="t">Validation gate checks the sanitized buffer</span><div class="mut">Confirms no raw reference, no leftover OCR text, all boxes covered</div></div></div>
+<div class="wall">Only the sanitized image is allowed past this point</div>
+<div class="stage"><b class="n">6</b><div><span class="t">Cloud VLM reasons over the safe view</span><div class="mut">Returns one structured action as strict JSON</div></div></div>
+<div class="stage"><b class="n">7</b><div><span class="t">Local validator checks the action</span><div class="mut">Type on allowlist, coordinates inside viewport, target is a real safe element</div></div></div>
+<div class="stage"><b class="n">8</b><div><span class="t">Action executes, or user confirms first</span><div class="mut">Submit, pay, delete, upload, consent — always require explicit approval</div></div></div>
+</div>
+
+<h2>3. Technology stack</h2>
+<div class="tbl"><table>
+<tr><th>Layer</th><th>Technology</th><th>Role</th></tr>
+<tr><td>Browser client</td><td>TypeScript / JavaScript, Manifest V3</td><td>Chrome-first, Firefox-compatible extension shell</td></tr>
+<tr><td>Capture</td><td>chrome.tabs.captureVisibleTab()</td><td>Local, user-triggered screenshot of the active tab</td></tr>
+<tr><td>Local inference</td><td>ONNX Runtime Web</td><td>Runs quantized detection models in-browser</td></tr>
+<tr><td>Acceleration</td><td>WebGPU, WASM/CPU fallback</td><td>Fast inference where available, graceful degrade otherwise</td></tr>
+<tr><td>Privacy layer</td><td>TypeScript policy engine</td><td>Redaction rules, fail-closed enforcement</td></tr>
+<tr><td>Server API</td><td>Node.js / Python</td><td>Receives sanitized payload only</td></tr>
+<tr><td>Cloud reasoning</td><td>Open-weight VLM (pinned version)</td><td>Returns a structured UI action</td></tr>
+<tr><td>Audit store</td><td>IndexedDB / extension storage</td><td>Metadata-only local safety log</td></tr>
+</table></div>
+
+<h2>4. PII taxonomy and sanitization</h2>
+<div class="tbl"><table>
+<tr><th>Sensitive element</th><th>Detection</th><th>Sanitized as</th></tr>
+<tr><td>Face / photo</td><td>Local face detector</td><td>Blur or opaque mask</td></tr>
+<tr><td>Password field</td><td>Field type + DOM confirmation</td><td>Full blackout</td></tr>
+<tr><td>Aadhaar-like ID</td><td>OCR + pattern match</td><td><code>ID_REDACTED_01</code></td></tr>
+<tr><td>Mobile number</td><td>OCR + pattern match</td><td><code>PHONE_REDACTED_01</code></td></tr>
+<tr><td>Email address</td><td>OCR + pattern match</td><td><code>user-01@masked.local</code></td></tr>
+<tr><td>Full name</td><td>OCR + field-label heuristic</td><td><code>USER_01</code></td></tr>
+<tr><td>Low-confidence region</td><td>Privacy policy engine</td><td>Expanded mask or block</td></tr>
+</table></div>
+
+<h2>5. Privacy decision policy</h2>
+<div class="tbl"><table>
+<tr><th>Signal</th><th>Response</th></tr>
+<tr><td>High confidence PII</td><td>Targeted redaction / explicit placeholder</td></tr>
+<tr><td>Medium confidence PII</td><td>Expand the mask to safely cover the region</td></tr>
+<tr><td>Low confidence PII</td><td>Larger mask, ask the user, or block</td></tr>
+<tr><td>Detector / OCR / redaction failure</td><td><b style="color:var(--bad)">Block transmission — fail closed</b></td></tr>
+<tr><td>Unsupported content type</td><td>Block or require explicit confirmation</td></tr>
+</table></div>
+
+<h2>6. Threat model</h2>
+<div class="tbl"><table>
+<tr><th>Threat</th><th>Mitigation</th></tr>
+<tr><td>Raw screenshot upload</td><td>Privacy gate blocks any raw buffer from the network payload</td></tr>
+<tr><td>OCR text leakage</td><td>Raw OCR output stays local, never logged or sent</td></tr>
+<tr><td>Missed PII</td><td>Conservative thresholds, expanded masks, benchmark testing</td></tr>
+<tr><td>Cloud action hallucination</td><td>Strict JSON schema, local allowlist, DOM verification</td></tr>
+<tr><td>Prompt injection from the page</td><td>Page content treated as untrusted data, never as instructions</td></tr>
+<tr><td>Sensitive audit logs</td><td>Metadata only — no raw screenshots or PII ever stored</td></tr>
+<tr><td>Cloud outage / rate limit</td><td>Tested fallback and a prerecorded demo backup</td></tr>
+</table></div>
+
+<h2>7. Action schema and validation</h2>
+<pre>{
+  "action": "click",
+  "target": {"x": 742, "y": 516},
+  "confidence": 0.93,
+  "reason": "Visible next-step button"
+}</pre>
+<p class="mut">Allowed: click, scroll, focus, highlight, open_dropdown, type_with_user_confirmation. Submit, pay, delete, upload, send, and consent always require explicit user approval before execution.</p>
+
+<h2>8. Evaluation framework</h2>
+<div class="tbl"><table>
+<tr><th>Criterion</th><th>Weight</th><th>How it's measured</th></tr>
+<tr><td>Visual context accuracy</td><td>25%</td><td>Correct page-state understanding on labelled screenshots</td></tr>
+<tr><td>PII recall / precision</td><td>20%</td><td>Labelled benchmark; precision, recall, F1</td></tr>
+<tr><td>Redaction precision</td><td>20%</td><td>Coverage, leakage rate, over-redaction rate</td></tr>
+<tr><td>Client resource use</td><td>20%</td><td>CPU, memory, model size, execution provider</td></tr>
+<tr><td>End-to-end latency</td><td>15%</td><td>Capture-to-action timing over repeated trials</td></tr>
+</table></div>
+<div class="eq">Precision = TP / (TP + FP) &nbsp; Recall = TP / (TP + FN) &nbsp; F1 = 2·P·R / (P + R)</div>
+<p class="mut">Scoring weight given to each criterion:</p>
+<div class="bars">
+<div class="bar" style="height:100%"><span>25%</span><em>Visual context</em></div>
+<div class="bar" style="height:80%"><span>20%</span><em>PII recall/precision</em></div>
+<div class="bar" style="height:80%"><span>20%</span><em>Redaction precision</em></div>
+<div class="bar" style="height:80%"><span>20%</span><em>Resource use</em></div>
+<div class="bar" style="height:60%"><span>15%</span><em>Latency</em></div>
+</div>
+<p class="mut" style="margin-top:26px">Weights as defined in the evaluation framework — not a scored result.</p>
+
+<h2>9. Benchmark composition (planned, 150 screenshots)</h2>
+<div class="bars">
+<div class="bar" style="height:100%"><span>30</span><em>Registration</em></div>
+<div class="bar" style="height:66.7%"><span>20</span><em>Login</em></div>
+<div class="bar" style="height:100%"><span>30</span><em>Govt forms</em></div>
+<div class="bar" style="height:100%"><span>30</span><em>Mixed PII</em></div>
+<div class="bar" style="height:66.7%"><span>20</span><em>No-PII</em></div>
+<div class="bar" style="height:66.7%"><span>20</span><em>Zoom/theme</em></div>
+</div>
+<p class="mut" style="margin-top:26px">Target screenshot counts per category — collection plan, not measured results.</p>
+
+<h2>10. Roadmap</h2>
+<div class="tbl"><table>
+<tr><th>Phase</th><th>Deliverable</th><th></th></tr>
+<tr><td>1</td><td>Extension shell, local capture, manual masking, network guard</td><td class="tag">Live</td></tr>
+<tr><td>2</td><td>Regex/heuristic PII detection on real fields</td><td class="tag">Live</td></tr>
+<tr><td>2b</td><td>Trained face detector + OCR model</td><td class="tag">Planned</td></tr>
+<tr><td>3</td><td>Cloud VLM connection, strict JSON schema</td><td class="tag">Planned</td></tr>
+<tr><td>4</td><td>Local action execution + confirmation gates</td><td class="tag">Planned</td></tr>
+<tr><td>5</td><td>150-shot benchmark, leak tests, backup demo</td><td class="tag">Planned</td></tr>
+</table></div>
+
+<p class="mut" style="margin-top:32px;font-size:14px">SentinelVision · Team NerdyEnough · PS 26171 · Aligned with the privacy-by-design intent of India's DPDP Act, 2023.</p>
+</main></body></html>
